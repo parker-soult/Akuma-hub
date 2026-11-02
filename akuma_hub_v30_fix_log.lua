@@ -24990,18 +24990,23 @@ do
 		-- fantasma que sai de algumas portas: precisa de 3 hits pra dar o candy
 		local findGhost = function(origin)
 			local Players = game:GetService("Players")
-			local best, bestDist
+			local exact, exactDist, generic, genericDist
 			local function check(m)
 				if m:IsA("Model") and not Players:GetPlayerFromCharacter(m) then
 					local n = string.lower(m.Name)
-					if string.find(n, "ghost", 1, true) or string.find(n, "fantasma", 1, true) or string.find(n, "phantom", 1, true) or string.find(n, "specter", 1, true) or string.find(n, "spirit", 1, true) then
+					local isExact = string.find(n, "ghost chase", 1, true) ~= nil
+					local isGeneric = string.find(n, "ghost", 1, true) or string.find(n, "fantasma", 1, true) or string.find(n, "phantom", 1, true) or string.find(n, "specter", 1, true) or string.find(n, "spirit", 1, true)
+					if isExact or isGeneric then
 						local hum = m:FindFirstChildOfClass("Humanoid")
 						if not hum or hum.Health > 0 then
 							local root = m:FindFirstChild("HumanoidRootPart") or m.PrimaryPart or m:FindFirstChildWhichIsA("BasePart", true)
 							if root then
 								local d = (root.Position - origin).Magnitude
-								if d <= 150 and (not bestDist or d < bestDist) then
-									best, bestDist = m, d
+								-- [Akuma] "Ghost Chase" e o fantasma certo (persegue o jogador): raio maior e prioridade
+								if isExact and d <= 400 and (not exactDist or d < exactDist) then
+									exact, exactDist = m, d
+								elseif d <= 150 and (not genericDist or d < genericDist) then
+									generic, genericDist = m, d
 								end
 							end
 						end
@@ -25019,7 +25024,7 @@ do
 					end
 				end
 			end
-			return best
+			return exact or generic
 		end
 
 		local hitGhost = function(ghost)
