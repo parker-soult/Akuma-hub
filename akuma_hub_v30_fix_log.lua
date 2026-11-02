@@ -27413,10 +27413,177 @@ ZyroxOpenMainGui = function(names, label, beforeOpen)
 	end
 end
 
+-- [Akuma fix] Os botoes antes so ligavam .Visible na janela, e o jogo desfaz isso. Agora o script vai ate o NPC
+-- (achado pelo texto sobre a cabeca: "Especialista em Despertares" / "Titles Specialist"), dispara o "Interagir"
+-- dele e deixa o proprio jogo abrir a janela. Se nao achar o NPC (longe/nao carregado), usa o metodo antigo.
+ZyroxFindMainGui = function(names)
+	local pg = LocalPlayer2:FindFirstChild("PlayerGui")
+	local main = pg and pg:FindFirstChild("Main")
+	if main then
+		for _, name in ipairs(names) do
+			local gui = main:FindFirstChild(name) or main:FindFirstChild(name, true)
+			if gui then
+				return gui
+			end
+		end
+	end
+	return nil
+end
+
+ZyroxGuiIsOpen = function(gui)
+	if not gui then
+		return false
+	end
+	local node = gui
+	while node and node:IsA("GuiObject") do
+		if not node.Visible then
+			return false
+		end
+		node = node.Parent
+	end
+	return true
+end
+
+ZyroxFindNpcPrompt = function(keywords)
+	local char = LocalPlayer2.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	local function match(text)
+		text = string.lower(tostring(text or ""))
+		for _, key in ipairs(keywords) do
+			if string.find(text, key, 1, true) then
+				return true
+			end
+		end
+		return false
+	end
+	local function partOf(inst)
+		local node = inst.Parent
+		while node and node ~= workspace do
+			if node:IsA("BasePart") then
+				return node
+			end
+			if node:IsA("Attachment") and node.Parent and node.Parent:IsA("BasePart") then
+				return node.Parent
+			end
+			if node:IsA("Model") then
+				return node.PrimaryPart or node:FindFirstChildWhichIsA("BasePart", true)
+			end
+			node = node.Parent
+		end
+		return nil
+	end
+
+	local anchors, prompts, count = {}, {}, 0
+	for _, inst in ipairs(workspace:GetDescendants()) do
+		if inst:IsA("ProximityPrompt") then
+			local part = partOf(inst)
+			if part then
+				table.insert(prompts, { prompt = inst, part = part })
+			end
+		elseif inst:IsA("TextLabel") or inst:IsA("TextButton") then
+			if match(inst.Text) then
+				local part = partOf(inst)
+				if part then
+					table.insert(anchors, part)
+				end
+			end
+		elseif inst:IsA("Model") and match(inst.Name) then
+			local part = inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart", true)
+			if part then
+				table.insert(anchors, part)
+			end
+		end
+		count = count + 1
+		if count % 4000 == 0 then
+			task.wait()
+		end
+	end
+
+	local best, bestScore
+	for _, anchor in ipairs(anchors) do
+		for _, entry in ipairs(prompts) do
+			if entry.prompt.Parent and entry.part.Parent then
+				local near = (entry.part.Position - anchor.Position).Magnitude
+				if near <= 20 then
+					local score = near * 10 + (hrp and (entry.part.Position - hrp.Position).Magnitude / 100 or 0)
+					if not bestScore or score < bestScore then
+						best, bestScore = entry, score
+					end
+				end
+			end
+		end
+	end
+	return best
+end
+
+ZyroxOpenNpcWindow = function(keywords, names, label, beforeOpen)
+	task.spawn(function()
+		local ok, err = pcall(function()
+			local char = LocalPlayer2.Character
+			local hrp = char and char:FindFirstChild("HumanoidRootPart")
+			if not hrp then
+				return
+			end
+			local entry = ZyroxFindNpcPrompt(keywords)
+			if entry then
+				local prompt, part = entry.prompt, entry.part
+				pcall(function()
+					prompt.RequiresLineOfSight = false
+					prompt.MaxActivationDistance = math.max(prompt.MaxActivationDistance, 30)
+					prompt.HoldDuration = 0
+				end)
+				hrp.CFrame = CFrame.new(part.Position + Vector3.new(0, 3, 0))
+				task.wait(0.4)
+				for attempt = 1, 4 do
+					if attempt == 1 and fireproximityprompt then
+						pcall(fireproximityprompt, prompt)
+					elseif attempt <= 3 then
+						pcall(function()
+							prompt:InputHoldBegin()
+							task.wait(0.1)
+							prompt:InputHoldEnd()
+						end)
+					else
+						pcall(function()
+							local key = prompt.KeyboardKeyCode
+							if key == Enum.KeyCode.Unknown then
+								key = Enum.KeyCode.E
+							end
+							local vim = game:GetService("VirtualInputManager")
+							vim:SendKeyEvent(true, key, false, game)
+							task.wait(0.15)
+							vim:SendKeyEvent(false, key, false, game)
+						end)
+					end
+					task.wait(0.8)
+					if ZyroxGuiIsOpen(ZyroxFindMainGui(names)) then
+						if lib.HideUI then
+							lib.HideUI()
+						end
+						return
+					end
+				end
+				-- o dialogo/janela pode ter aberto por outro caminho; esconde o hub pra voce ver
+				if lib.HideUI then
+					lib.HideUI()
+				end
+				return
+			end
+			pcall(function()
+				lib:Notify({ Title = label, Description = "NPC nao encontrado (longe demais?). Usando abertura direta.", Duration = 4 })
+			end)
+			ZyroxOpenMainGui(names, label, beforeOpen)
+		end)
+		if not ok then
+			warn("[" .. label .. "] " .. tostring(err))
+		end
+	end)
+end
+
 GRP_Misc_Player_Gui_Others:AddButton({
 	Text = "Open Awakenings Expert",
 	Func = function()
-		ZyroxOpenMainGui({ "AwakeningToggler", "Awakening", "AwakeningExpert" }, "Awakenings")
+		ZyroxOpenNpcWindow({ "awakening", "despertar" }, { "AwakeningToggler", "Awakening", "AwakeningExpert" }, "Awakenings")
 	end
 })
 
@@ -27424,7 +27591,7 @@ do
 	GRP_Misc_Player_Gui_Others:AddButton({
 		Text = "Open Title Selection",
 		Func = function()
-			ZyroxOpenMainGui({ "Titles" }, "Titles", function()
+			ZyroxOpenNpcWindow({ "titles specialist", "title specialist", "especialista em t" }, { "Titles" }, "Titles", function()
 				ReplicatedStorage3.Remotes.CommF_:InvokeServer("getTitles", true)
 			end)
 		end
