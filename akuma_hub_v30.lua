@@ -10,7 +10,8 @@
 ]]
 
 -- Tela de escolha (so se ainda nao definiu ZyroxUI)
-if not getgenv().ZyroxUI then
+getgenv().ZyroxUI = "Fluent" -- [Akuma] so Fluent: seletor de interface desativado
+if false then
 	local chosen = nil
 	local UIS = game:GetService("UserInputService")
 	local TS = game:GetService("TweenService")
@@ -224,7 +225,7 @@ if not getgenv().ZyroxUI then
 	end)
 end
 
-getgenv().ZyroxUI = getgenv().ZyroxUI or "Fluent"
+getgenv().ZyroxUI = "Fluent"
 
 local function geniter(f, s, c)
 	if type(f) ~= "function" then
@@ -1104,54 +1105,50 @@ do
 end
 
 LowCpu = function()
-	local Terrain = game.Workspace.Terrain
+	pcall(function()
+		local Terrain = workspace:FindFirstChildOfClass("Terrain")
+		if Terrain then
+			Terrain.WaterWaveSize = 0
+			Terrain.WaterWaveSpeed = 0
+			Terrain.WaterReflectance = 0
+			Terrain.WaterTransparency = 0
+		end
+	end)
+	pcall(function()
+		Lighting.GlobalShadows = false
+		Lighting.FogEnd = 9e9
+		Lighting.Brightness = 0
+	end)
+	pcall(function()
+		settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+	end)
 
-	Terrain.WaterWaveSize = 0
-	Terrain.WaterWaveSpeed = 0
-	Terrain.WaterReflectance = 0
-	Terrain.WaterTransparency = 0
-	game.Lighting.GlobalShadows = false
-	game.Lighting.FogEnd = 9e9
-	game.Lighting.Brightness = 0
-	settings().Rendering.QualityLevel = "Level01"
-
-	for _, descendant in pairs(game:GetDescendants()) do
-		if descendant:IsA("Part") or descendant:IsA("Union") or descendant:IsA("CornerWedgePart") or descendant:IsA("TrussPart") then
-			descendant.Material = "Plastic"
-			descendant.Reflectance = 0
-		else
-			if not descendant:IsA("Decal") then
-				if not descendant:IsA("Texture") then
-					if not descendant:IsA("ParticleEmitter") then
-						if not descendant:IsA("Trail") then
-							if descendant:IsA("Explosion") then
-								descendant.BlastPressure = 1
-								descendant.BlastRadius = 1
-							elseif descendant:IsA("Fire") or descendant:IsA("SpotLight") or descendant:IsA("Smoke") or descendant:IsA("Sparkles") then
-								descendant.Enabled = false
-							elseif descendant:IsA("MeshPart") then
-								descendant.Material = "Plastic"
-								descendant.Reflectance = 0
-								descendant.TextureID = 10385902758728956
-							end
-
-							continue
-						end
-					end
-
-					descendant.Lifetime = NumberRange.new(0)
-
-					continue
-				end
+	local count = 0
+	for _, d in ipairs(workspace:GetDescendants()) do
+		pcall(function()
+			if d:IsA("BasePart") then
+				d.Material = Enum.Material.Plastic
+				d.Reflectance = 0
+			elseif d:IsA("Decal") or d:IsA("Texture") then
+				d.Transparency = 1
+			elseif d:IsA("ParticleEmitter") or d:IsA("Trail") or d:IsA("Fire") or d:IsA("Smoke") or d:IsA("Sparkles") or d:IsA("SpotLight") then
+				d.Enabled = false
+			elseif d:IsA("Explosion") then
+				d.BlastPressure = 1
+				d.BlastRadius = 1
 			end
-
-			descendant.Transparency = 1
+		end)
+		count = count + 1
+		if count % 2000 == 0 then
+			task.wait()
 		end
 	end
 
-	for _, child in pairs(game.Lighting:GetChildren()) do
+	for _, child in ipairs(Lighting:GetChildren()) do
 		if child:IsA("BlurEffect") or child:IsA("SunRaysEffect") or child:IsA("ColorCorrectionEffect") or child:IsA("BloomEffect") or child:IsA("DepthOfFieldEffect") then
-			child.Enabled = false
+			pcall(function()
+				child.Enabled = false
+			end)
 		end
 	end
 end
@@ -3235,7 +3232,24 @@ local function ZyroxBuildFluentAdapter(source)
 			button.Size = UDim2.fromOffset(44, 44)
 			button.Position = UDim2.new(0, 12, 0.5, -22)
 			button.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-			button.Image = cfg.Image or ""
+			local imgId = tostring(cfg.Image or ""):match("%d+")
+			if imgId then
+				-- rbxthumb funciona tanto para Image quanto para Decal; rbxassetid fica de reserva
+				button.Image = "rbxthumb://type=Asset&id=" .. imgId .. "&w=150&h=150"
+				task.spawn(function()
+					local t0 = tick()
+					while button.Parent and not button.IsLoaded and tick() - t0 < 5 do
+						task.wait(0.1)
+					end
+					if button.Parent and not button.IsLoaded then
+						pcall(function()
+							button.Image = "rbxassetid://" .. imgId
+						end)
+					end
+				end)
+			else
+				button.Image = cfg.Image or ""
+			end
 			button.ScaleType = Enum.ScaleType.Crop
 			button.Active = true
 			button.Draggable = true
@@ -3335,6 +3349,7 @@ do
 		order = { "fluent", "modded", "classic" }
 	end
 
+	order = { "fluent" } -- [Akuma] so Fluent
 	for _, kind in ipairs(order) do
 		if lib then
 			break
@@ -24218,7 +24233,7 @@ do
 	local state = { on = false, noclip = nil, cursorGui = nil, cursor = nil, skip = {}, current = nil, currentAt = 0 }
 
 	local GRP_Halloween = t15.Halloween:AddLeftGroupbox("Pumpkin Hunt")
-	GRP_Halloween:AddLabel("Auto Collect Pumpkin\nSO FUNCIONA COM A HUNTER CAPE PRETA equipada. Ligue o toggle e deixe o mouse sobre o ponto de coleta: o auto clicker clica onde o mouse esta.")
+	GRP_Halloween:AddLabel("Auto Collect Pumpkin\nVoa ate a abobora mais proxima e bate nela ate derrotar, depois vai para a proxima. Use com a Hunter Cape PRETA equipada.")
 
 	local notify = function(msg)
 		pcall(function()
@@ -24442,6 +24457,157 @@ do
 
 	local collectDist = 8 -- studs: perto o bastante pra coletar sem teleportar de novo
 
+	-- ===== [Akuma] ataque na abobora =====
+	local pumpkinPart = function(obj)
+		if not obj then
+			return nil
+		end
+		if obj:IsA("BasePart") then
+			return obj
+		end
+		if obj:IsA("Model") and obj.PrimaryPart then
+			return obj.PrimaryPart
+		end
+		return obj:FindFirstChild("HumanoidRootPart", true) or obj:FindFirstChildWhichIsA("BasePart", true)
+	end
+
+	local pumpkinHealth = function(obj)
+		local humanoid = obj:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			return humanoid.Health
+		end
+		local value = obj:FindFirstChild("Health")
+		if value and value:IsA("ValueBase") and tonumber(value.Value) then
+			return tonumber(value.Value)
+		end
+		return nil
+	end
+
+	local pumpkinDead = function(obj)
+		if not obj or not obj.Parent or not obj:IsDescendantOf(workspace) then
+			return true
+		end
+		if obj:GetAttribute("Collected") or obj:GetAttribute("Taken") then
+			return true
+		end
+		local hp = pumpkinHealth(obj)
+		return hp ~= nil and hp <= 0
+	end
+
+	local equipAttackTool = function()
+		pcall(function()
+			if _G.SelectWeapon and _G.SelectWeapon ~= "" then
+				EquipWeapon(_G.SelectWeapon)
+				return
+			end
+			local char = plr.Character
+			local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+			local held = char and char:FindFirstChildOfClass("Tool")
+			if held and held.ToolTip == "Melee" then
+				return
+			end
+			for _, tool in ipairs(plr.Backpack:GetChildren()) do
+				if tool:IsA("Tool") and tool.ToolTip == "Melee" and humanoid then
+					humanoid:EquipTool(tool)
+					return
+				end
+			end
+		end)
+	end
+
+	local hitPumpkin = function(obj, part)
+		local modules = game:GetService("ReplicatedStorage"):FindFirstChild("Modules")
+		local net = modules and modules:FindFirstChild("Net")
+		local registerAttack = net and net:FindFirstChild("RE/RegisterAttack")
+		local registerHit = net and net:FindFirstChild("RE/RegisterHit")
+		if not (registerAttack and registerHit) then
+			return
+		end
+		pcall(function()
+			registerAttack:FireServer(0)
+		end)
+		pcall(function()
+			registerHit:FireServer(part, { { obj, part } })
+		end)
+		pcall(function()
+			registerHit:FireServer(part)
+		end)
+	end
+
+	local clickPumpkin = function(part)
+		pcall(function()
+			local camera = workspace.CurrentCamera
+			local pos
+			if camera and part then
+				local screen, onScreen = camera:WorldToViewportPoint(part.Position)
+				if onScreen then
+					pos = Vector2.new(screen.X, screen.Y)
+				end
+			end
+			pos = pos or UserInputService:GetMouseLocation()
+			VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, true, game, 0)
+			task.wait(0.01)
+			VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, false, game, 0)
+		end)
+	end
+
+	-- vai ate a abobora e bate nela ate morrer (true = derrotada, false = desistiu)
+	local fightPumpkin = function(obj)
+		local started, lastHit = tick(), 0
+		local lastHp, hpSince = nil, tick()
+		while state.on do
+			if pumpkinDead(obj) then
+				return true
+			end
+			if tick() - started > 40 then
+				return false
+			end
+
+			local char = plr.Character
+			local hrp = char and char:FindFirstChild("HumanoidRootPart")
+			local part = pumpkinPart(obj)
+			if not hrp or not part then
+				return false
+			end
+
+			local goal = CFrame.new(part.Position + Vector3.new(0, 5, 0))
+			if (hrp.Position - part.Position).Magnitude > 12 then
+				applyMovers(char)
+				if _G.HalloweenTween then
+					flyTo(hrp, goal)
+				else
+					hrp.CFrame = goal
+				end
+			else
+				-- perto: fica parado em cima da abobora e bate
+				clearMovers()
+				hrp.CFrame = goal
+				hrp.AssemblyLinearVelocity = Vector3.zero
+			end
+
+			if tick() - lastHit >= 0.12 then
+				lastHit = tick()
+				equipAttackTool()
+				hitPumpkin(obj, part)
+				clickPumpkin(part)
+			end
+
+			-- anti-trava: se a vida da abobora nao muda por 15s, desiste dela
+			local hp = pumpkinHealth(obj)
+			if hp then
+				if hp ~= lastHp then
+					lastHp, hpSince = hp, tick()
+				elseif tick() - hpSince > 15 then
+					return false
+				end
+			end
+
+			task.wait(0.05)
+		end
+		return false
+	end
+
+
 	local start = function()
 		if state.on then
 			return
@@ -24450,7 +24616,7 @@ do
 			notify("PumpkinHunt nao encontrado (o evento esta ativo?). Tentando mesmo assim.")
 		end
 		state.on = true
-		notify("Requer a Hunter Cape PRETA equipada. Deixe o mouse sobre a abobora/ponto de coleta (o auto clicker clica onde o mouse esta).")
+		notify("Auto Collect Pumpkin ligado: indo ate a abobora e atacando. Requer a Hunter Cape PRETA equipada.")
 
 		-- limpa BodyClip do hub se estiver no caminho
 		pcall(function()
@@ -24472,74 +24638,37 @@ do
 			end
 		end)
 
-		-- auto clicker (~10 cliques por segundo) na posicao atual do mouse/toque
-		task.spawn(function()
-			while state.on do
-				pcall(function()
-					local pos = UserInputService:GetMouseLocation()
-					VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, true, game, 0)
-					task.wait(0.01)
-					VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, false, game, 0)
-				end)
-				task.wait(0.09)
-			end
-		end)
-
-		-- voa ate a abobora; quando ela some (derrotada) abre a janela de combate e vai para a proxima
+		-- [Akuma] voa ate a abobora mais proxima, bate ate derrotar e segue para a proxima
 		task.spawn(function()
 			while state.on do
 				pcall(function()
 					local char = plr.Character
 					local hrp = char and char:FindFirstChild("HumanoidRootPart")
 					local hum = char and char:FindFirstChildOfClass("Humanoid")
-					if not hrp or not hum then
+					if not hrp or not hum or hum.Health <= 0 then
 						return
 					end
 
-					-- a abobora anterior foi derrotada?
-					if state.current and not state.current:IsDescendantOf(workspace) then
-						state.current = nil
-						huntWindow()
-						return
-					end
-
-					-- nao derrotou em 15s: desiste dessa e escolhe outra
-					if state.current and tick() - state.currentAt > 15 then
-						state.skip[state.current] = true
-						state.current = nil
-					end
-
-					local target, targetObj = nearestPumpkin(hrp)
-					if state.current then
-						target = nil
-						pcall(function()
-							local obj = state.current
-							target = obj:IsA("Model") and (obj.PrimaryPart and obj.PrimaryPart.Position or obj:GetPivot().Position) or obj.Position
-						end)
-					elseif targetObj then
-						state.current, state.currentAt = targetObj, tick()
-					end
-
-					if not target then
+					local _, obj = nearestPumpkin(hrp)
+					if not obj then
 						clearMovers()
-						return
-					end
-
-					local dist = (hrp.Position - target).Magnitude
-					if dist > collectDist then
-						applyMovers(char)
-						local goal = CFrame.new(target + Vector3.new(0, 3, 0))
-						if _G.HalloweenTween then
-							flyTo(hrp, goal)
-						else
-							hrp.CFrame = goal
+						state.current = nil
+						if next(state.skip) then
+							state.skip = {}
 						end
-					else
-						-- ja em cima: solta PlatformStand/movers pro clique/coleta funcionar
-						clearMovers()
+						return
+					end
+
+					state.current, state.currentAt = obj, tick()
+					local killed = fightPumpkin(obj)
+					state.current = nil
+					clearMovers()
+					state.skip[obj] = true
+					if killed then
+						huntWindow()
 					end
 				end)
-				task.wait(0.35)
+				task.wait(0.2)
 			end
 		end)
 	end
@@ -24593,6 +24722,399 @@ do
 			end
 		end
 	})
+
+	-- ===== [Akuma] Auto Trick or Treat =====
+	-- Evento: portas em varias ilhas (minuto :00 a :10 de cada hora). Bate na porta, escolhe "Treat" no dialogo
+	-- (Candy Corn) e segue para a proxima. Se a porta disparar uma luta, mata os inimigos novos e continua.
+	do
+		local trick = { on = false, noclip = nil, flying = false, visited = {}, doors = {}, scannedAt = 0, warned = false }
+		local GRP_Trick = t15.Halloween:AddLeftGroupbox("Trick or Treat")
+		GRP_Trick:AddLabel("Auto Trick or Treat\nBate nas portas, escolhe Treat no dialogo e vai para a proxima casa. O evento roda do minuto :00 ate :10 de cada hora.")
+
+		local keywords = { "knock", "trick", "treat" }
+		local matchText = function(text)
+			text = string.lower(tostring(text or ""))
+			for _, key in ipairs(keywords) do
+				if string.find(text, key, 1, true) then
+					return true
+				end
+			end
+			return false
+		end
+
+		-- o prompt/detector ou ate 4 ancestrais tem nome de porta do evento
+		local isDoorObject = function(inst)
+			local node, depth = inst, 0
+			while node and node ~= workspace and depth < 5 do
+				if matchText(node.Name) then
+					return true
+				end
+				local name = string.lower(node.Name)
+				if string.find(name, "halloween", 1, true) and string.find(name, "door", 1, true) then
+					return true
+				end
+				node = node.Parent
+				depth = depth + 1
+			end
+			return false
+		end
+
+		local objectPart = function(inst)
+			local node = inst.Parent
+			while node and node ~= workspace do
+				if node:IsA("BasePart") then
+					return node
+				end
+				if node:IsA("Attachment") and node.Parent and node.Parent:IsA("BasePart") then
+					return node.Parent
+				end
+				if node:IsA("Model") then
+					return node.PrimaryPart or node:FindFirstChildWhichIsA("BasePart", true)
+				end
+				node = node.Parent
+			end
+			return nil
+		end
+
+		local scanDoors = function(maxAge)
+			if tick() - trick.scannedAt < (maxAge or 30) then
+				return trick.doors
+			end
+			trick.scannedAt = tick()
+			local list, count = {}, 0
+			for _, inst in ipairs(workspace:GetDescendants()) do
+				if inst:IsA("ProximityPrompt") or inst:IsA("ClickDetector") then
+					local text = ""
+					if inst:IsA("ProximityPrompt") then
+						text = inst.ActionText .. " " .. inst.ObjectText
+					end
+					if matchText(text) or isDoorObject(inst) then
+						local part = objectPart(inst)
+						if part then
+							table.insert(list, { inst = inst, part = part })
+						end
+					end
+				end
+				count = count + 1
+				if count % 2500 == 0 then
+					task.wait()
+				end
+			end
+			trick.doors = list
+			return list
+		end
+
+		local goTo = function(goal)
+			local char = plr.Character
+			local hrp = char and char:FindFirstChild("HumanoidRootPart")
+			if not hrp then
+				return
+			end
+			local dist = (hrp.Position - goal.Position).Magnitude
+			if dist <= 8 then
+				return
+			end
+			trick.flying = true
+			if _G.HalloweenTween or dist > 400 then
+				-- distancias grandes sempre por tween (teleporte longo e arriscado)
+				applyMovers(char)
+				local speed = tonumber(getgenv().TweenSpeedFar) or 270
+				local time = math.max(dist / speed, 0.05)
+				local tween = game:GetService("TweenService"):Create(hrp, TweenInfo.new(time, Enum.EasingStyle.Linear), { CFrame = goal })
+				local done = false
+				tween.Completed:Connect(function()
+					done = true
+				end)
+				tween:Play()
+				local started = tick()
+				while not done and trick.on and tick() - started < time + 3 do
+					task.wait(0.05)
+				end
+				tween:Cancel()
+				clearMovers()
+			else
+				hrp.CFrame = goal
+			end
+			trick.flying = false
+		end
+
+		local triggerDoor = function(door)
+			local inst = door.inst
+			if inst:IsA("ProximityPrompt") then
+				local oldHold = inst.HoldDuration
+				pcall(function()
+					inst.HoldDuration = 0
+				end)
+				local fired = false
+				if fireproximityprompt then
+					fired = pcall(fireproximityprompt, inst)
+				end
+				if not fired then
+					-- reserva: aperta a tecla do prompt
+					pcall(function()
+						local key = inst.KeyboardKeyCode
+						if key == Enum.KeyCode.Unknown then
+							key = Enum.KeyCode.E
+						end
+						VirtualInputManager:SendKeyEvent(true, key, false, game)
+						task.wait(0.2)
+						VirtualInputManager:SendKeyEvent(false, key, false, game)
+					end)
+				end
+				pcall(function()
+					inst.HoldDuration = oldHold
+				end)
+			elseif fireclickdetector then
+				pcall(fireclickdetector, inst)
+			end
+		end
+
+		local optionText = function(option)
+			local text = option._text
+			if type(text) == "table" then
+				text = table.concat(text, " ")
+			end
+			return string.lower(tostring(text))
+		end
+
+		-- conversa com o NPC da porta: escolhe "Treat" e avanca ate o dialogo fechar
+		local handleDialogue = function()
+			local okReq, DC = pcall(function()
+				return require(game:GetService("ReplicatedStorage"):WaitForChild("DialogueController", 3))
+			end)
+			if not okReq or not DC then
+				return false
+			end
+			local prefer = { "treat", "yes", "ok", "thank", "knock" }
+			local decline = { "no thanks", "cancel", "bye", "leave", "nevermind", "never mind", "not now" }
+			local started, seen = tick(), false
+			while trick.on and tick() - started < 12 do
+				task.wait(0.35)
+				if DC.Active then
+					seen = true
+					local ok, active = pcall(DC.getActiveDialogue)
+					local page = ok and active and active._pageStack and active._pageStack[#active._pageStack]
+					if page then
+						local options = page._options or {}
+						if #options == 0 then
+							pcall(DC.advance)
+						else
+							local pick
+							for _, word in ipairs(prefer) do
+								for _, option in ipairs(options) do
+									if string.find(optionText(option), word, 1, true) then
+										pick = option
+										break
+									end
+								end
+								if pick then
+									break
+								end
+							end
+							if not pick then
+								for _, option in ipairs(options) do
+									local text, bad = optionText(option), false
+									for _, word in ipairs(decline) do
+										if string.find(text, word, 1, true) then
+											bad = true
+										end
+									end
+									if not bad then
+										pick = option
+										break
+									end
+								end
+							end
+							pcall(DC.select, pick or options[1])
+						end
+					end
+				elseif seen then
+					break
+				end
+			end
+			pcall(DC.close)
+			return seen
+		end
+
+		-- luta contra o que a porta invocar (so inimigos que nao estavam la antes)
+		local fightNew = function(before)
+			local previous = _G.HalloweenFarm
+			local started = tick()
+			_G.HalloweenFarm = true
+			pcall(function()
+				while trick.on and tick() - started < 30 do
+					local char = plr.Character
+					local hrp = char and char:FindFirstChild("HumanoidRootPart")
+					local enemies = workspace:FindFirstChild("Enemies")
+					if not hrp or not enemies then
+						break
+					end
+					local target, best = nil, 90
+					for _, mob in ipairs(enemies:GetChildren()) do
+						local root = mob:FindFirstChild("HumanoidRootPart")
+						if root and not before[mob] and t9.Alive(mob) then
+							local dist = (root.Position - hrp.Position).Magnitude
+							if dist < best then
+								target, best = mob, dist
+							end
+						end
+					end
+					if not target then
+						break
+					end
+					t9.Kill(target, true)
+					task.wait()
+				end
+			end)
+			_G.HalloweenFarm = previous
+		end
+
+		local startTrick = function()
+			if trick.on then
+				return
+			end
+			trick.on = true
+			trick.warned = false
+			trick.visited = {}
+			notify("Auto Trick or Treat ligado. Procurando portas do evento...")
+
+			trick.noclip = RunService.Stepped:Connect(function()
+				if not trick.flying then
+					return
+				end
+				local char = plr.Character
+				if char then
+					for _, part in ipairs(char:GetDescendants()) do
+						if part:IsA("BasePart") then
+							part.CanCollide = false
+						end
+					end
+				end
+			end)
+
+			task.spawn(function()
+				while trick.on do
+					pcall(function()
+						local char = plr.Character
+						local hrp = char and char:FindFirstChild("HumanoidRootPart")
+						local hum = char and char:FindFirstChildOfClass("Humanoid")
+						if not hrp or not hum or hum.Health <= 0 then
+							return
+						end
+
+						-- porta disponivel mais proxima (cada porta so de novo depois de 60s)
+						local best, bestDist
+						for _, door in ipairs(scanDoors(30)) do
+							local inst, part = door.inst, door.part
+							if inst.Parent and part.Parent then
+								local enabled = true
+								if inst:IsA("ProximityPrompt") then
+									enabled = inst.Enabled
+								end
+								local last = trick.visited[inst]
+								if enabled and (not last or tick() - last > 60) then
+									local dist = (part.Position - hrp.Position).Magnitude
+									if not bestDist or dist < bestDist then
+										best, bestDist = door, dist
+									end
+								end
+							end
+						end
+
+						if not best then
+							if not trick.warned then
+								trick.warned = true
+								notify("Nenhuma porta disponivel agora. O evento roda de :00 a :10 de cada hora; fico procurando.")
+							end
+							scanDoors(8)
+							task.wait(3)
+							return
+						end
+						trick.warned = false
+
+						local part = best.part
+						local stand = part.Position + Vector3.new(0, 1, 0)
+						local away = (hrp.Position - part.Position) * Vector3.new(1, 0, 1)
+						if away.Magnitude > 1 then
+							stand = stand + away.Unit * 4
+						end
+						goTo(CFrame.lookAt(stand, part.Position))
+
+						local before = {}
+						local enemies = workspace:FindFirstChild("Enemies")
+						if enemies then
+							for _, mob in ipairs(enemies:GetChildren()) do
+								before[mob] = true
+							end
+						end
+
+						trick.visited[best.inst] = tick()
+						triggerDoor(best)
+						handleDialogue()
+						fightNew(before)
+					end)
+					task.wait(0.5)
+				end
+			end)
+		end
+
+		local stopTrick = function()
+			trick.on = false
+			trick.flying = false
+			if trick.noclip then
+				trick.noclip:Disconnect()
+				trick.noclip = nil
+			end
+			pcall(clearMovers)
+		end
+
+		GRP_Trick:AddToggle("Auto_Trick_Or_Treat", {
+			Text = "Auto Trick or Treat",
+			Tooltip = "Bate nas portas do evento, escolhe Treat e repete em todas as casas",
+			Default = false,
+			Callback = function(value)
+				if value then
+					startTrick()
+				else
+					stopTrick()
+				end
+			end
+		})
+
+		GRP_Trick:AddButton({
+			Text = "Scan Doors (debug)",
+			Func = function()
+				task.spawn(function()
+					local doors = scanDoors(0)
+					pcall(function()
+						lib:Notify({ Title = "Trick or Treat", Description = #doors .. " porta(s) encontrada(s). Detalhes no console (F9).", Duration = 5 })
+					end)
+					for i, door in ipairs(doors) do
+						if i > 20 then
+							break
+						end
+						print("[Akuma][Porta]", door.inst:GetFullName())
+					end
+					local root = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+					if root then
+						local count = 0
+						for _, inst in ipairs(workspace:GetDescendants()) do
+							if inst:IsA("ProximityPrompt") then
+								local part = objectPart(inst)
+								if part and (part.Position - root.Position).Magnitude < 40 then
+									print("[Akuma][Prompt perto]", inst:GetFullName(), "|", inst.ActionText, "|", inst.ObjectText)
+								end
+							end
+							count = count + 1
+							if count % 2500 == 0 then
+								task.wait()
+							end
+						end
+					end
+				end)
+			end
+		})
+	end
 end
 -- ===================== FIM HALLOWEEN =====================
 
@@ -26060,6 +26582,24 @@ do
 	})
 end
 
+-- [Akuma] HttpGet com reserva (alguns executores bloqueiam game:HttpGet para certos dominios)
+AkumaHttpGet = function(url)
+	local ok, res = pcall(function()
+		return game:HttpGet(url)
+	end)
+	if ok and type(res) == "string" and res ~= "" then
+		return res
+	end
+	local req = (syn and syn.request) or (http and http.request) or http_request or request
+	if req then
+		local ok2, r = pcall(req, { Url = url, Method = "GET" })
+		if ok2 and type(r) == "table" and type(r.Body) == "string" and r.Body ~= "" then
+			return r.Body
+		end
+	end
+	error("HTTP request failed: " .. tostring(url))
+end
+
 GRP_Misc_Server_Function = t15.Misc:AddLeftGroupbox("Server - Function")
 
 -- ===== Redeem All Codes (logica do Vxeze: acompanha o que ja foi resgatado e filtra por tamanho) =====
@@ -26141,7 +26681,7 @@ do
 	local fetchWiki = function()
 		local out = {}
 		pcall(function()
-			local body = HttpService:JSONDecode(game:HttpGet("https://blox-fruits.fandom.com/api.php?action=parse&page=Codes&prop=wikitext&format=json"))
+			local body = HttpService:JSONDecode(AkumaHttpGet("https://blox-fruits.fandom.com/api.php?action=parse&page=Codes&prop=wikitext&format=json"))
 			for match in body.parse.wikitext["*"]:gmatch("<code>([A-Za-z0-9_]+)</code>") do
 				table.insert(out, match)
 			end
@@ -26277,7 +26817,7 @@ do
 		pcall(function()
 			for _ = 1, 3 do
 				local url = "https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100" .. (cursor and ("&cursor=" .. cursor) or "")
-				local body = HttpService:JSONDecode(game:HttpGet(url))
+				local body = HttpService:JSONDecode(AkumaHttpGet(url))
 				for _, server in ipairs(body.data or {}) do
 					table.insert(list, {
 						Job = server.id,
@@ -26409,7 +26949,17 @@ end
 GRP_Misc_Server_Function:AddButton({
 	Text = "Copy JobID",
 	Func = function()
-		setclipboard(tostring(game.JobId))
+		local copy = setclipboard or toclipboard or (Clipboard and Clipboard.set)
+		if copy then
+			pcall(copy, tostring(game.JobId))
+			pcall(function()
+				lib:Notify({ Title = "Server", Description = "JobID copiado", Duration = 3 })
+			end)
+		else
+			pcall(function()
+				lib:Notify({ Title = "Server", Description = "Seu executor nao tem setclipboard", Duration = 4 })
+			end)
+		end
 	end
 })
 GRP_Misc_Player_Gui_Others = t15.Misc:AddLeftGroupbox("Player Gui / Others")
@@ -26481,7 +27031,9 @@ DisbleChat = GRP_Misc_Player_Gui_Others:AddToggle("Disable_Chat_GUI", {
 	Default = false,
 	Callback = function(p348)
 		_G.DisableChatGui = p348
-		game:GetService("StarterGui"):SetCoreGuiEnabled(Enum.CoreGuiType.Chat, not p348)
+		pcall(function()
+			game:GetService("StarterGui"):SetCoreGuiEnabled(Enum.CoreGuiType.Chat, not p348)
+		end)
 	end
 })
 DisbleLeaderB = GRP_Misc_Player_Gui_Others:AddToggle("Disable_Leader_Board_GUI", {
@@ -26490,11 +27042,9 @@ DisbleLeaderB = GRP_Misc_Player_Gui_Others:AddToggle("Disable_Leader_Board_GUI",
 	Callback = function(p349)
 		ReLeader = p349
 
-		if ReLeader == true then
-			game:GetService("StarterGui"):SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList, false)
-		elseif ReLeader == false then
-			game:GetService("StarterGui"):SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList, true)
-		end
+		pcall(function()
+			game:GetService("StarterGui"):SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList, not ReLeader)
+		end)
 	end
 })
 
@@ -26835,11 +27385,16 @@ rtxM = GRP_Misc_Graphics_Haki_Stats:AddToggle("Turn_on_RTX_Mode", {
 GRP_Misc_Graphics_Haki_Stats:AddButton({
 	Text = "Turn on Fast Mode",
 	Func = function()
-		local descendants, v1431 = workspace:GetDescendants()
-
-		for _, v1 in next, descendants, v1431 do
+		local count = 0
+		for _, v1 in ipairs(workspace:GetDescendants()) do
 			if table.find(t2, v1.ClassName) then
-				v1.Material = "Plastic"
+				pcall(function()
+					v1.Material = Enum.Material.Plastic
+				end)
+			end
+			count = count + 1
+			if count % 3000 == 0 then
+				task.wait()
 			end
 		end
 	end
@@ -26858,14 +27413,21 @@ do
 	GRP_Misc_Graphics_Haki_Stats:AddButton({
 		Text = "Turn on increase Boats",
 		Func = function()
-			for _, child in pairs(workspace.Boats:GetChildren()) do
-				if tostring(child.Owner.Value) == tostring(LocalPlayer2.Name) then
-					for _, descendant in pairs(child:GetDescendants()) do
+			local boats = workspace:FindFirstChild("Boats")
+			if not boats then
+				return
+			end
+			for _, child in ipairs(boats:GetChildren()) do
+				local owner = child:FindFirstChild("Owner")
+				if owner and tostring(owner.Value) == tostring(LocalPlayer2.Name) then
+					for _, descendant in ipairs(child:GetDescendants()) do
 						if descendant:IsA("VehicleSeat") then
-							descendant.MaxSpeed = 350
-							descendant.Torque = 0.2
-							descendant.TurnSpeed = 5
-							descendant.HeadsUpDisplay = true
+							pcall(function()
+								descendant.MaxSpeed = 350
+								descendant.Torque = 0.2
+								descendant.TurnSpeed = 5
+								descendant.HeadsUpDisplay = true
+							end)
 						end
 					end
 				end
@@ -26888,23 +27450,23 @@ GRP_Misc_Configure_God = t15.Misc:AddLeftGroupbox("Configure - God")
 GRP_Misc_Configure_God:AddButton({
 	Text = "Rain Fruits (Client)",
 	Func = function()
-		if ReplicatedStorage3:FindFirstChild("Assets") then
-			if ReplicatedStorage3.Assets:FindFirstChild("Models") then
-				local children = ReplicatedStorage3.Assets.Models:GetChildren()
-
-				for _, child in pairs(children) do
-					if child:IsA("Model") and child.Name ~= "IceSpikes4" then
-						local clone = child:Clone()
-
-						clone.Parent = workspace
-
-						if clone:FindFirstChild("Float") then
-							clone.Float:Destroy()
-						end
-
-						clone:SetPrimaryPartCFrame(CFrame.new(LocalPlayer2.Character.HumanoidRootPart.Position + Vector3.new(math.random(-50, 50), 100, math.random(-50, 50))))
+		local assets = ReplicatedStorage3:FindFirstChild("Assets")
+		local models = assets and assets:FindFirstChild("Models")
+		local root = LocalPlayer2.Character and LocalPlayer2.Character:FindFirstChild("HumanoidRootPart")
+		if not (models and root) then
+			return
+		end
+		for _, child in ipairs(models:GetChildren()) do
+			if child:IsA("Model") and child.Name ~= "IceSpikes4" then
+				pcall(function()
+					local clone = child:Clone()
+					local float = clone:FindFirstChild("Float")
+					if float then
+						float:Destroy()
 					end
-				end
+					clone.Parent = workspace
+					clone:PivotTo(CFrame.new(root.Position + Vector3.new(math.random(-50, 50), 100, math.random(-50, 50))))
+				end)
 			end
 		end
 	end
@@ -26986,14 +27548,26 @@ walkWater = GRP_Misc_Configure_God:AddToggle("Turn_on_Walk_on_Water", {
 	Default = true,
 	Callback = function(p356)
 		_G.WalkWater_Part = p356
-
-		if _G.WalkWater_Part then
-			game:GetService("Workspace").Map["WaterBase-Plane"].Size = Vector3.new(1000, 112, 1000)
-		else
-			game:GetService("Workspace").Map["WaterBase-Plane"].Size = Vector3.new(1000, 80, 1000)
-		end
+		pcall(function()
+			local map = workspace:FindFirstChild("Map")
+			local plane = map and map:FindFirstChild("WaterBase-Plane")
+			if plane then
+				plane.Size = Vector3.new(1000, p356 and 112 or 80, 1000)
+			end
+		end)
 	end
 })
+-- Default = true nao dispara o callback ao carregar: aplica o estado inicial
+task.spawn(function()
+	pcall(function()
+		local map = workspace:WaitForChild("Map", 30)
+		local plane = map and map:WaitForChild("WaterBase-Plane", 30)
+		if plane and _G.WalkWater_Part ~= false then
+			_G.WalkWater_Part = true
+			plane.Size = Vector3.new(1000, 112, 1000)
+		end
+	end)
+end)
 iceWalk = GRP_Misc_Configure_God:AddToggle("Turn_on_Ice_Walk", {
 	Text = "Turn on Ice Walk",
 	Default = false,
