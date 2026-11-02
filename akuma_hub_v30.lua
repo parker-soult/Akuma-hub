@@ -3232,24 +3232,7 @@ local function ZyroxBuildFluentAdapter(source)
 			button.Size = UDim2.fromOffset(44, 44)
 			button.Position = UDim2.new(0, 12, 0.5, -22)
 			button.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-			local imgId = tostring(cfg.Image or ""):match("%d+")
-			if imgId then
-				-- rbxthumb funciona tanto para Image quanto para Decal; rbxassetid fica de reserva
-				button.Image = "rbxthumb://type=Asset&id=" .. imgId .. "&w=150&h=150"
-				task.spawn(function()
-					local t0 = tick()
-					while button.Parent and not button.IsLoaded and tick() - t0 < 5 do
-						task.wait(0.1)
-					end
-					if button.Parent and not button.IsLoaded then
-						pcall(function()
-							button.Image = "rbxassetid://" .. imgId
-						end)
-					end
-				end)
-			else
-				button.Image = cfg.Image or ""
-			end
+			button.Image = cfg.Image or ""
 			button.ScaleType = Enum.ScaleType.Crop
 			button.Active = true
 			button.Draggable = true
@@ -24233,49 +24216,12 @@ do
 	local state = { on = false, noclip = nil, cursorGui = nil, cursor = nil, skip = {}, current = nil, currentAt = 0 }
 
 	local GRP_Halloween = t15.Halloween:AddLeftGroupbox("Pumpkin Hunt")
-	GRP_Halloween:AddLabel("Auto Collect Pumpkin\nVoa ate a abobora mais proxima e bate nela ate derrotar, depois vai para a proxima. Use com a Hunter Cape PRETA equipada.")
+	GRP_Halloween:AddLabel("Auto Collect Pumpkin\nVoa ate a abobora mais proxima e bate nela ate derrotar, depois vai para a proxima.")
 
 	local notify = function(msg)
 		pcall(function()
 			lib:Notify({ Title = "Halloween", Description = msg, Duration = 4 })
 		end)
-	end
-
-	local showCursor = function()
-		if state.cursorGui then
-			state.cursorGui.Enabled = true
-			return
-		end
-		local gui = Instance.new("ScreenGui")
-		gui.Name = "ZyroxHalloweenCursor"
-		gui.ResetOnSpawn = false
-		gui.DisplayOrder = 999
-		pcall(function()
-			if syn and syn.protect_gui then
-				syn.protect_gui(gui)
-			end
-		end)
-		gui.Parent = (gethui and gethui()) or game:GetService("CoreGui")
-
-		local cursor = Instance.new("ImageLabel")
-		cursor.Name = "VirtualCursor"
-		cursor.Size = UDim2.new(0, 28, 0, 28)
-		cursor.Position = UDim2.new(0.5, -14, 0.4, -14)
-		cursor.BackgroundTransparency = 1
-		cursor.Image = "rbxassetid://100054563"
-		cursor.ImageColor3 = Color3.fromRGB(255, 255, 255)
-		cursor.Active = true
-		cursor.Draggable = true
-		cursor.ZIndex = 10
-		cursor.Parent = gui
-
-		state.cursorGui, state.cursor = gui, cursor
-	end
-
-	local hideCursor = function()
-		if state.cursorGui then
-			state.cursorGui.Enabled = false
-		end
 	end
 
 	-- BodyVelocity / BodyGyro / PlatformStand (so enquanto longe da abobora)
@@ -24534,20 +24480,12 @@ do
 		end)
 	end
 
-	local clickPumpkin = function(part)
+	local clickPumpkin = function()
 		pcall(function()
-			local camera = workspace.CurrentCamera
-			local pos
-			if camera and part then
-				local screen, onScreen = camera:WorldToViewportPoint(part.Position)
-				if onScreen then
-					pos = Vector2.new(screen.X, screen.Y)
-				end
+			local tool = plr.Character and plr.Character:FindFirstChildOfClass("Tool")
+			if tool then
+				tool:Activate()
 			end
-			pos = pos or UserInputService:GetMouseLocation()
-			VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, true, game, 0)
-			task.wait(0.01)
-			VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, false, game, 0)
 		end)
 	end
 
@@ -24589,7 +24527,7 @@ do
 				lastHit = tick()
 				equipAttackTool()
 				hitPumpkin(obj, part)
-				clickPumpkin(part)
+				clickPumpkin()
 			end
 
 			-- anti-trava: se a vida da abobora nao muda por 15s, desiste dela
@@ -24616,7 +24554,7 @@ do
 			notify("PumpkinHunt nao encontrado (o evento esta ativo?). Tentando mesmo assim.")
 		end
 		state.on = true
-		notify("Auto Collect Pumpkin ligado: indo ate a abobora e atacando. Requer a Hunter Cape PRETA equipada.")
+		notify("Auto Collect Pumpkin ligado: indo ate a abobora e atacando.")
 
 		-- limpa BodyClip do hub se estiver no caminho
 		pcall(function()
@@ -24777,7 +24715,7 @@ do
 		end
 
 		local scanDoors = function(maxAge)
-			if tick() - trick.scannedAt < (maxAge or 30) then
+			if tick() - trick.scannedAt < (maxAge or 120) then
 				return trick.doors
 			end
 			trick.scannedAt = tick()
@@ -24842,6 +24780,9 @@ do
 			local inst = door.inst
 			if inst:IsA("ProximityPrompt") then
 				local oldHold = inst.HoldDuration
+				pcall(function()
+					inst.RequiresLineOfSight = false
+				end)
 				pcall(function()
 					inst.HoldDuration = 0
 				end)
@@ -24928,7 +24869,7 @@ do
 							pcall(DC.select, pick or options[1])
 						end
 					end
-				elseif seen then
+				elseif seen or tick() - started > 3 then
 					break
 				end
 			end
@@ -24969,12 +24910,37 @@ do
 			_G.HalloweenFarm = previous
 		end
 
+		local doorPartOf = function(inst)
+			if not (inst:IsA("ProximityPrompt") or inst:IsA("ClickDetector")) then
+				return nil
+			end
+			local text = ""
+			if inst:IsA("ProximityPrompt") then
+				text = inst.ActionText .. " " .. inst.ObjectText
+			end
+			if matchText(text) or isDoorObject(inst) then
+				return objectPart(inst)
+			end
+			return nil
+		end
+
 		local startTrick = function()
 			if trick.on then
 				return
 			end
 			trick.on = true
 			trick.warned = false
+			trick.scannedAt = 0
+			trick.conn = workspace.DescendantAdded:Connect(function(inst)
+				task.defer(function()
+					pcall(function()
+						local part = doorPartOf(inst)
+						if part then
+							table.insert(trick.doors, { inst = inst, part = part })
+						end
+					end)
+				end)
+			end)
 			trick.visited = {}
 			notify("Auto Trick or Treat ligado. Procurando portas do evento...")
 
@@ -25004,7 +24970,7 @@ do
 
 						-- porta disponivel mais proxima (cada porta so de novo depois de 60s)
 						local best, bestDist
-						for _, door in ipairs(scanDoors(30)) do
+						for _, door in ipairs(scanDoors(120)) do
 							local inst, part = door.inst, door.part
 							if inst.Parent and part.Parent then
 								local enabled = true
@@ -25026,7 +24992,7 @@ do
 								trick.warned = true
 								notify("Nenhuma porta disponivel agora. O evento roda de :00 a :10 de cada hora; fico procurando.")
 							end
-							scanDoors(8)
+							scanDoors(20)
 							task.wait(3)
 							return
 						end
@@ -25061,6 +25027,10 @@ do
 		local stopTrick = function()
 			trick.on = false
 			trick.flying = false
+			if trick.conn then
+				trick.conn:Disconnect()
+				trick.conn = nil
+			end
 			if trick.noclip then
 				trick.noclip:Disconnect()
 				trick.noclip = nil
@@ -25081,39 +25051,6 @@ do
 			end
 		})
 
-		GRP_Trick:AddButton({
-			Text = "Scan Doors (debug)",
-			Func = function()
-				task.spawn(function()
-					local doors = scanDoors(0)
-					pcall(function()
-						lib:Notify({ Title = "Trick or Treat", Description = #doors .. " porta(s) encontrada(s). Detalhes no console (F9).", Duration = 5 })
-					end)
-					for i, door in ipairs(doors) do
-						if i > 20 then
-							break
-						end
-						print("[Akuma][Porta]", door.inst:GetFullName())
-					end
-					local root = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
-					if root then
-						local count = 0
-						for _, inst in ipairs(workspace:GetDescendants()) do
-							if inst:IsA("ProximityPrompt") then
-								local part = objectPart(inst)
-								if part and (part.Position - root.Position).Magnitude < 40 then
-									print("[Akuma][Prompt perto]", inst:GetFullName(), "|", inst.ActionText, "|", inst.ObjectText)
-								end
-							end
-							count = count + 1
-							if count % 2500 == 0 then
-								task.wait()
-							end
-						end
-					end
-				end)
-			end
-		})
 	end
 end
 -- ===================== FIM HALLOWEEN =====================
