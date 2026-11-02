@@ -1,1 +1,1 @@
-{"error":"on line 3242, cannot use '...' outside of a vararg function"}
+{"error":"on line 3273, cannot use '...' outside of a vararg function"}
