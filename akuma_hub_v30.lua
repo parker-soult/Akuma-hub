@@ -24829,7 +24829,7 @@ do
 			local prefer = { "treat", "yes", "ok", "thank", "knock" }
 			local decline = { "no thanks", "cancel", "bye", "leave", "nevermind", "never mind", "not now" }
 			local started, seen = tick(), false
-			while trick.on and tick() - started < 12 do
+			while trick.on and tick() - started < 20 do
 				task.wait(0.35)
 				if DC.Active then
 					seen = true
@@ -24869,7 +24869,7 @@ do
 							pcall(DC.select, pick or options[1])
 						end
 					end
-				elseif seen or tick() - started > 3 then
+				elseif seen or tick() - started > 6 then
 					break
 				end
 			end
@@ -25004,7 +25004,9 @@ do
 						if away.Magnitude > 1 then
 							stand = stand + away.Unit * 4
 						end
-						goTo(CFrame.lookAt(stand, part.Position))
+						local stay = CFrame.lookAt(stand, part.Position)
+						goTo(stay)
+						hrp.CFrame = stay
 
 						local before = {}
 						local enemies = workspace:FindFirstChild("Enemies")
@@ -25015,9 +25017,38 @@ do
 						end
 
 						trick.visited[best.inst] = tick()
-						triggerDoor(best)
-						handleDialogue()
+
+						-- fica parado em frente a porta ate o dialogo/evento terminar (sair cancela: "You walked away")
+						local held = true
+						task.spawn(function()
+							while held and trick.on do
+								local root = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+								if root then
+									if (root.Position - stay.Position).Magnitude > 3 then
+										root.CFrame = stay
+									end
+									root.AssemblyLinearVelocity = Vector3.zero
+								end
+								task.wait(0.1)
+							end
+						end)
+
+						local talked = false
+						for _ = 1, 3 do
+							triggerDoor(best)
+							talked = handleDialogue()
+							if talked then
+								break
+							end
+							task.wait(1.5)
+						end
+						if talked then
+							task.wait(2.5) -- deixa o evento da porta terminar antes de ir para a proxima
+						end
+						held = false
+
 						fightNew(before)
+						task.wait(1.5)
 					end)
 					task.wait(0.5)
 				end
