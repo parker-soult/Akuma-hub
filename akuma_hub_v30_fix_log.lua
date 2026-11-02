@@ -2955,6 +2955,11 @@ end
 -- [Akuma] tema roxo com preto: registra "Akuma Purple" nas tabelas de temas do Fluent (via getgc).
 -- Se nao der, usa um tema roxo nativo (Amethyst no Fluent, Deep Violet no Fluent-modded).
 local function ZyroxRegisterPurpleTheme(modded)
+	-- [Akuma fix] getgc/filtergc desativados: varrer a memoria do jogo travava a abertura e podia fechar o Roblox
+	-- no celular. Usa direto o tema roxo nativo da biblioteca.
+	if true then
+		return modded and "Deep Violet" or "Amethyst"
+	end
 	local C = function(r, g, b) return Color3.fromRGB(r, g, b) end
 	local custom = {
 		Name = "Akuma Purple",
@@ -2994,8 +2999,28 @@ local function ZyroxRegisterPurpleTheme(modded)
 		HoverChange = 0.08,
 	}
 	local registered = false
+	-- [Akuma fix] filtergc (nativo do executor) acha a tabela de temas sem varrer a memoria inteira
 	pcall(function()
-		if typeof(getgc) ~= "function" then
+		if typeof(filtergc) ~= "function" then
+			return
+		end
+		local t = filtergc("table", { Keys = { "Names", "Dark" } }, true)
+		if type(t) == "table" and type(rawget(t, "Names")) == "table" and rawget(t, "Dark") ~= nil then
+			local base = rawget(t, "Amethyst") or rawget(t, "Dark")
+			for k, v in pairs(base) do
+				if custom[k] == nil then
+					custom[k] = v
+				end
+			end
+			t["Akuma Purple"] = custom
+			if not table.find(t.Names, "Akuma Purple") then
+				table.insert(t.Names, "Akuma Purple")
+			end
+			registered = true
+		end
+	end)
+	pcall(function()
+		if registered or typeof(getgc) ~= "function" then
 			return
 		end
 		for _, t in ipairs(getgc(true)) do
@@ -3061,8 +3086,15 @@ local function ZyroxBuildFluentAdapter(source)
 	local uid = 0
 	local firstToggleUI = true
 
+	-- [Akuma fix] montar centenas de elementos de uma vez travava o jogo na abertura; agora cede o frame
+	-- a cada ~12ms de trabalho, entao a janela abre na hora e vai se preenchendo sem congelar.
+	local lastYield = os.clock()
 	local nextId = function(prefix, text)
 		uid = uid + 1
+		if os.clock() - lastYield > 0.012 then
+			task.wait()
+			lastYield = os.clock()
+		end
 		return prefix .. "_" .. uid .. "_" .. (tostring(text or ""):gsub("%W", "_"))
 	end
 
@@ -3332,7 +3364,9 @@ local function ZyroxBuildFluentAdapter(source)
 		cfg = cfg or {}
 		local mobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 		local isModdedSrc = source == "modded" or source == "fluentmod" or source == "fluent-modded"
-		local purpleName = ZyroxRegisterPurpleTheme(isModdedSrc)
+		-- [Akuma fix] abre com o tema nativo roxo (sem getgc, que congelava a abertura); o "Akuma Purple" e
+		-- registrado em segundo plano depois que a interface terminou de montar
+		local purpleName = isModdedSrc and "Deep Violet" or "Amethyst"
 		adapter._PurpleTheme = purpleName
 		local themeName = cfg.Theme or purpleName
 
@@ -24823,6 +24857,332 @@ do
 		local GRP_Trick = t15.Halloween:AddLeftGroupbox("Trick or Treat")
 		GRP_Trick:AddLabel("Auto Trick or Treat\nBate nas portas, escolhe Treat no dialogo e vai para a proxima casa. O evento roda do minuto :00 ate :10 de cada hora.")
 
+		-- ===== [Akuma] Hellfire Gas (portal de fogo / Raid Boss) + fantasma (3 hits) =====
+		-- find: procura o boss pelo nome ("Hellfire Gas") em workspace.Enemies/workspace e sinaliza se existe um
+		-- portal de fogo no mapa (o boss ainda vai nascer). fight: fica acima da cabeca dele e ataca ate morrer.
+		ZyroxHellfire = {}
+		ZyroxHellfire.find = function()
+			local char = plr.Character
+			local hrp = char and char:FindFirstChild("HumanoidRootPart")
+			local bestMob, bestDist
+			local portalFound = false
+			local function checkModel(m)
+				if m:IsA("Model") and string.find(string.lower(m.Name), "hellfire", 1, true) then
+					local hum = m:FindFirstChildOfClass("Humanoid")
+					local root = m:FindFirstChild("HumanoidRootPart")
+					if hum and root and hum.Health > 0 then
+						local d = hrp and (root.Position - hrp.Position).Magnitude or 0
+						if not bestDist or d < bestDist then
+							bestMob, bestDist = m, d
+						end
+					end
+				end
+			end
+			local function checkPortal(inst)
+				local n = string.lower(inst.Name)
+				if string.find(n, "portal", 1, true) and (string.find(n, "fire", 1, true) or string.find(n, "hell", 1, true) or string.find(n, "flame", 1, true)) then
+					portalFound = true
+				end
+			end
+			local enemies = workspace:FindFirstChild("Enemies")
+			if enemies then
+				for _, m in ipairs(enemies:GetChildren()) do
+					checkModel(m)
+				end
+			end
+			for _, inst in ipairs(workspace:GetChildren()) do
+				checkModel(inst)
+				checkPortal(inst)
+			end
+			for _, folderName in ipairs({ "_WorldOrigin", "Effects" }) do
+				local folder = workspace:FindFirstChild(folderName)
+				if folder then
+					for _, inst in ipairs(folder:GetChildren()) do
+						checkPortal(inst)
+					end
+				end
+			end
+			return bestMob, portalFound
+		end
+
+		local fireClick = function(mob)
+			local root = mob:FindFirstChild("HumanoidRootPart") or mob.PrimaryPart or mob:FindFirstChildWhichIsA("BasePart", true)
+			pcall(function()
+				local tool = plr.Character and plr.Character:FindFirstChildOfClass("Tool")
+				if tool then
+					tool:Activate()
+				end
+			end)
+			if root then
+				hitPumpkin(mob, root)
+			end
+			pcall(function()
+				VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+				VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+			end)
+		end
+
+		local mobAlive = function(mob)
+			local hum = mob and mob.Parent and mob:FindFirstChildOfClass("Humanoid")
+			return hum ~= nil and hum.Health > 0
+		end
+
+		-- retorna true se o boss morreu / sumiu
+		ZyroxHellfire.fight = function(mob, isOn, maxTime)
+			local started, lastClick = tick(), 0
+			local previous = _G.HalloweenFarm
+			_G.HalloweenFarm = true
+			local noclip = RunService.Stepped:Connect(function()
+				local char = plr.Character
+				if char then
+					for _, part in ipairs(char:GetDescendants()) do
+						if part:IsA("BasePart") then
+							part.CanCollide = false
+						end
+					end
+				end
+			end)
+			pcall(function()
+				while isOn() and tick() - started < (maxTime or 120) and mobAlive(mob) do
+					local root = mob:FindFirstChild("HumanoidRootPart")
+					local myHrp = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+					if not root or not myHrp then
+						break
+					end
+					local h = tonumber(_G.HalloweenBossHeight) or 18
+					local above = root.Position + Vector3.new(0, h, 0)
+					local goal = CFrame.lookAt(above, root.Position)
+					local dist = (myHrp.Position - above).Magnitude
+					if dist > 150 then
+						applyMovers(plr.Character)
+						local speed = tonumber(getgenv().TweenSpeedFar) or 270
+						local t = math.max(dist / speed, 0.05)
+						local tween = game:GetService("TweenService"):Create(myHrp, TweenInfo.new(t, Enum.EasingStyle.Linear), { CFrame = goal })
+						tween:Play()
+						local tStart = tick()
+						while isOn() and tick() - tStart < t + 1 and mobAlive(mob) do
+							task.wait(0.05)
+						end
+						tween:Cancel()
+					else
+						if not myHrp:FindFirstChild("FarmBodyVelocity") then
+							applyMovers(plr.Character)
+						end
+						if dist > 3 then
+							myHrp.CFrame = goal
+						end
+						myHrp.AssemblyLinearVelocity = Vector3.zero
+					end
+					if tick() - lastClick >= 0.1 then
+						lastClick = tick()
+						equipAttackTool()
+						fireClick(mob)
+					end
+					task.wait()
+				end
+			end)
+			noclip:Disconnect()
+			pcall(clearMovers)
+			_G.HalloweenFarm = previous
+			return not mobAlive(mob)
+		end
+
+		-- fantasma que sai de algumas portas: precisa de 3 hits pra dar o candy
+		local findGhost = function(origin)
+			local Players = game:GetService("Players")
+			local best, bestDist
+			local function check(m)
+				if m:IsA("Model") and not Players:GetPlayerFromCharacter(m) then
+					local n = string.lower(m.Name)
+					if string.find(n, "ghost", 1, true) or string.find(n, "fantasma", 1, true) or string.find(n, "phantom", 1, true) or string.find(n, "specter", 1, true) or string.find(n, "spirit", 1, true) then
+						local hum = m:FindFirstChildOfClass("Humanoid")
+						if not hum or hum.Health > 0 then
+							local root = m:FindFirstChild("HumanoidRootPart") or m.PrimaryPart or m:FindFirstChildWhichIsA("BasePart", true)
+							if root then
+								local d = (root.Position - origin).Magnitude
+								if d <= 150 and (not bestDist or d < bestDist) then
+									best, bestDist = m, d
+								end
+							end
+						end
+					end
+				end
+			end
+			for _, inst in ipairs(workspace:GetChildren()) do
+				check(inst)
+			end
+			for _, folderName in ipairs({ "Enemies", "NPCs", "_WorldOrigin" }) do
+				local folder = workspace:FindFirstChild(folderName)
+				if folder then
+					for _, inst in ipairs(folder:GetChildren()) do
+						check(inst)
+					end
+				end
+			end
+			return best
+		end
+
+		local hitGhost = function(ghost)
+			local started, lastHit = tick(), 0
+			while trick.on and tick() - started < 15 and ghost.Parent and (not ghost:FindFirstChildOfClass("Humanoid") or ghost:FindFirstChildOfClass("Humanoid").Health > 0) do
+				local root = ghost:FindFirstChild("HumanoidRootPart") or ghost.PrimaryPart or ghost:FindFirstChildWhichIsA("BasePart", true)
+				local myHrp = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+				if not root or not myHrp then
+					break
+				end
+				myHrp.CFrame = CFrame.lookAt(root.Position + Vector3.new(0, 3, 0), root.Position)
+				myHrp.AssemblyLinearVelocity = Vector3.zero
+				if tick() - lastHit >= 0.3 then
+					lastHit = tick()
+					pcall(equipAttackTool)
+					fireClick(ghost)
+				end
+				task.wait(0.05)
+			end
+		end
+
+		-- [Akuma] Quick clear: mata rapido os mobs NOVOS que a porta spawnou perto (ate 80 studs da porta).
+		-- Teleporta direto em cima do mais proximo e acerta todos do grupo de uma vez (sem tween/BringEnemy do t9.Kill).
+		-- Cada mob tem 6s; se travar, pula. Sai ~0.7s depois que nao sobra nenhum.
+		local quickClear = function(doorPos, before, isOn, maxTime)
+			local started, lastClick = tick(), 0
+			local skipped, current, currentSince = {}, nil, 0
+			local killedAny, idleSince = false, nil
+			local previous = _G.HalloweenFarm
+			_G.HalloweenFarm = true
+			local noclip = RunService.Stepped:Connect(function()
+				local char = plr.Character
+				if char then
+					for _, part in ipairs(char:GetDescendants()) do
+						if part:IsA("BasePart") then
+							part.CanCollide = false
+						end
+					end
+				end
+			end)
+			pcall(function()
+				local modules = game:GetService("ReplicatedStorage"):FindFirstChild("Modules")
+				local net = modules and modules:FindFirstChild("Net")
+				local registerAttack = net and net:FindFirstChild("RE/RegisterAttack")
+				local registerHit = net and net:FindFirstChild("RE/RegisterHit")
+				while isOn() and tick() - started < maxTime do
+					local enemies = workspace:FindFirstChild("Enemies")
+					local myHrp = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+					if not enemies or not myHrp then
+						break
+					end
+					local group, nearest, nearestDist = {}, nil, nil
+					for _, mob in ipairs(enemies:GetChildren()) do
+						if not before[mob] and not skipped[mob] and not string.find(string.lower(mob.Name), "hellfire", 1, true) then
+							local root = mob:FindFirstChild("HumanoidRootPart")
+							local hum = mob:FindFirstChildOfClass("Humanoid")
+							if root and hum and hum.Health > 0 and (root.Position - doorPos).Magnitude <= 80 then
+								local entry = { mob = mob, root = root }
+								table.insert(group, entry)
+								local d = (root.Position - myHrp.Position).Magnitude
+								if not nearestDist or d < nearestDist then
+									nearest, nearestDist = entry, d
+								end
+							end
+						end
+					end
+					if not nearest then
+						if not killedAny then
+							break
+						end
+						idleSince = idleSince or tick()
+						if tick() - idleSince > 0.7 then
+							break
+						end
+						task.wait(0.1)
+					else
+						idleSince, killedAny = nil, true
+						if current ~= nearest.mob then
+							current, currentSince = nearest.mob, tick()
+						end
+						if tick() - currentSince > 6 then
+							skipped[current] = true
+						else
+							myHrp.CFrame = CFrame.lookAt(nearest.root.Position + Vector3.new(0, 8, 0), nearest.root.Position)
+							myHrp.AssemblyLinearVelocity = Vector3.zero
+							if tick() - lastClick >= 0.1 then
+								lastClick = tick()
+								pcall(equipAttackTool)
+								pcall(function()
+									local tool = plr.Character and plr.Character:FindFirstChildOfClass("Tool")
+									if tool then
+										tool:Activate()
+									end
+								end)
+								if registerAttack and registerHit then
+									local targets = {}
+									for i, entry in ipairs(group) do
+										if i > 8 then
+											break
+										end
+										table.insert(targets, { entry.mob, entry.root })
+									end
+									pcall(function()
+										registerAttack:FireServer(0)
+									end)
+									pcall(function()
+										registerHit:FireServer(nearest.root, targets)
+									end)
+								end
+								pcall(function()
+									VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+									VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+								end)
+							end
+						end
+						task.wait()
+					end
+				end
+			end)
+			noclip:Disconnect()
+			pcall(clearMovers)
+			_G.HalloweenFarm = previous
+			return killedAny
+		end
+
+		-- depois de cada porta (com ou sem dialogo): ate ~2.5s procurando boss de fogo/portal ou fantasma
+		local reactToDoor = function(doorPos, before)
+			local reacted, extended, count = false, false, 0
+			local deadline = tick() + 2.5
+			while trick.on and tick() < deadline and count < 3 do
+				local boss, portal = ZyroxHellfire.find()
+				if portal and not extended then
+					extended = true
+					deadline = tick() + 6 -- portal de fogo visto: da tempo do boss nascer
+				end
+				local acted = false
+				if boss then
+					notify("Hellfire Gas encontrado. Atacando...")
+					ZyroxHellfire.fight(boss, function()
+						return trick.on
+					end, 150)
+					acted = true
+				else
+					local ghost = findGhost(doorPos)
+					if ghost then
+						hitGhost(ghost)
+						acted = true
+					elseif quickClear(doorPos, before or {}, function()
+						return trick.on
+					end, 25) then
+						acted = true
+					end
+				end
+				if acted then
+					reacted, count = true, count + 1
+					deadline = tick() + 1.5
+				else
+					task.wait(0.25)
+				end
+			end
+			return reacted
+		end
+
 		local getDialogueController
 		local keywords = { "knock", "trick", "treat" }
 		local matchText = function(text)
@@ -25261,8 +25621,13 @@ do
 						end)
 
 						local talked, nobody = handleDialogue(best)
+						held = false -- solta o "hold" na porta: o boss/fantasma move o personagem
+						local reacted = false
+						if not nobody then
+							reacted = reactToDoor(part.Position, before)
+						end
 						-- [Akuma fix] visited guarda tick() futuro: porta vazia/que nao abriu fica ~10 min / ~5 min fora da fila
-						local skipUntil = (nobody and 540) or (not talked and 240) or 0
+						local skipUntil = (nobody and 540) or (reacted and 300) or (not talked and 240) or 0
 						if skipUntil > 0 then
 							local now = tick() + skipUntil
 							for _, door in ipairs(trick.doors) do
@@ -25507,6 +25872,47 @@ do
 				else
 					stopBoss()
 				end
+			end
+		})
+
+		-- [Akuma] Auto Farm Hellfire Gas (Raid Boss do portal de fogo)
+		local fire = { on = false }
+		GRP_Boss:AddLabel("Auto Farm Hellfire Gas\nProcura o portal de fogo e o Raid Boss Hellfire Gas pelo nome, fica acima dele e ataca ate matar.")
+		GRP_Boss:AddToggle("Auto_Farm_Hellfire_Boss", {
+			Text = "Auto Farm Hellfire Gas",
+			Tooltip = "Procura o portal de fogo / Hellfire Gas [Raid Boss] e mata",
+			Default = false,
+			Callback = function(value)
+				fire.on = value and true or false
+				if not value then
+					return
+				end
+				notify("Auto Farm Hellfire Gas ligado. Procurando portal/boss...")
+				task.spawn(function()
+					local warned = false
+					while fire.on do
+						pcall(function()
+							local mob = ZyroxHellfire.find()
+							if not mob then
+								if not warned then
+									warned = true
+									notify("Hellfire Gas nao encontrado. Fico procurando...")
+								end
+								task.wait(1)
+								return
+							end
+							warned = false
+							local dead = ZyroxHellfire.fight(mob, function()
+								return fire.on
+							end, 600)
+							if fire.on and dead then
+								notify("Hellfire Gas derrotado!")
+								task.wait(2)
+							end
+						end)
+						task.wait(0.3)
+					end
+				end)
 			end
 		})
 	end
